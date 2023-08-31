@@ -38,9 +38,11 @@ struct MCTad
 			
 	int pos;
 	
-	int type;
+	double type;
 	int links;
 	int status;
+
+    double painter;
 	
 	int sisterID;
 	

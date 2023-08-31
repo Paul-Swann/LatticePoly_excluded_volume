@@ -37,7 +37,7 @@ if [ "$#" -eq "8" ]; then
 			QVARS2="PARAM2=$5,VAL2=${VAL2}"
 			
 			sbatch ${QARGS} -J $1$5$i --export=${QVARS},${QVARS2} ${SCRIPTDIR}/slurm_sweep.sh
-		done
+		done		
 	else
 		echo "numJob1 must be multiple of 48 (got $4)"
 	fi

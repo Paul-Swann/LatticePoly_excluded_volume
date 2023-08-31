@@ -17,6 +17,12 @@ ROOTDIR=${SCRIPTDIR}/../..
 # Set working directory to root
 cd ${ROOTDIR}
 
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ROOTDIR/lib
+PYTHONPATH=$PYTHONPATH:$ROOTDIR/resources
+
+export LD_LIBRARY_PATH
+export PYTHONPATH
+
 # Executable path
 EXEC=bin/lat
 
@@ -35,7 +41,7 @@ DATDIR=data${ITER}/${DATDIR}
 TMPDIR=${PARAM}_${VAL}
 [ ! -z "${PARAM2}" ] && TMPDIR=${PARAM2}_${VAL2}_${TMPDIR}
 
-TMPDIR=${SCRATCHDIR}/${LOGNAME}/LatticeData${ITER}/${TMPDIR}
+TMPDIR=${SCRATCHDIR}/${LOGNAME}/Painter_Clone2/LatticeData${ITER}/${TMPDIR}
 
 # Create output directory if necessary
 [ ! -d "${TMPDIR}" ] && mkdir -p ${TMPDIR}

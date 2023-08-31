@@ -8,6 +8,7 @@
 
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 #include "MCHeteroPoly.hpp"
 
@@ -18,86 +19,97 @@ void MCHeteroPoly::Init(int Ninit)
 {
 	MCPoly::Init(Ninit);
 	
+	for ( int vi = 0; vi < Ntot; ++vi )
+		hetTable[vi] = 0;
+	
 	if ( !RestartFromFile )
 	{
 		std::ifstream domainFile(domainPath);
+		
+		std::string line;
+		std::vector<std::pair<int, double>> domains;
 
 		if ( !domainFile.good() )
 			throw std::runtime_error("MCHeteroPoly: Couldn't open file " + domainPath);
-				
-		std::string line;
-
+		
 		while ( std::getline(domainFile, line) )
 		{
 			std::istringstream ss(line);
 			
 			int d1;
-			int d2;
-			
-			if ( ss >> d1 >> d2 )
+			double dcharge;
+            
+			if ( ss >> d1 >> dcharge )
 			{
-				if ( (d1 >= 0) && (d2 >= 0) && (d1 <= Nchain) && (d2 <= Nchain) )
+				if ( d1 < Nchain )
 				{
-					for ( int t = std::min(d1, d2); t < std::max(d1, d2); ++t )
-						tadConf[t].type = 1;
-				}
-				
+                    tadConf[d1].type = dcharge;
+					//std::cout <<"het "<<tadConf[d1].type  << std::endl;
+				}	
 				else
-					throw std::runtime_error("MCHeteroPoly: Found inconsistent domain boundaries '" + line + "' in file " + domainPath);
+					throw std::runtime_error("MCHeteroPoly: Found inconsistent values greater than chain length '" + line + "' in file " + domainPath);
 			}
-			
+            
 			else
 				throw std::runtime_error("MCHeteroPoly: Bad line '" + line + "' in file " + domainPath);
-		}
-		
+        }
 		domainFile.close();
 	}
-    
-    MCHeteroPoly::BuildHetTable();
-}
+		
+	for ( auto tad = tadConf.begin(); tad != tadConf.end(); ++tad )
+	{
+			
+		if ( tad->type != 0 )
+		{	
+			for ( int v = 0; v < 13; ++v )
+			{
+				int vi = (v == 0) ? tad->pos : lat->bitTable[v][tad->pos];
+					
+				hetTable[vi] += tad->type;
+				
+			}
+		}	
+		
+	}
 
-void MCHeteroPoly::BuildHetTable()
-{
-    for ( int vi = 0; vi < Ntot; ++vi )
-        hetTable[vi] = 0;
-    
-    for ( auto tad = tadConf.begin(); tad != tadConf.end(); ++tad )
-    {
-        if ( tad->type == 1 )
-        {
-            for ( int v = 0; v < 13; ++v )
-            {
-                int vi = (v == 0) ? tad->pos : lat->bitTable[v][tad->pos];
-                
-                ++hetTable[vi];
-            }
-        }
-    }
+	//for ( int v = 0; v < Nchain; ++v )
+	//	std::cout <<tadConf[v].type << std::endl;
 }
 
 void MCHeteroPoly::AcceptMove()
 {
 	MCPoly::AcceptMove();
 	
-	if ( tadTrial->type == 1 )
+	if ( tadTrial->type != 0 )
 	{
 		for ( int v = 0; v < 13; ++v )
 		{
 			int vi1 = (v == 0) ? tadUpdater->vo : lat->bitTable[v][tadUpdater->vo];
 			int vi2 = (v == 0) ? tadUpdater->vn : lat->bitTable[v][tadUpdater->vn];
 			
-			--hetTable[vi1];
-			++hetTable[vi2];
+			//std::cout <<"before "<<hetTable[vi1]<< std::endl;
+			hetTable[vi1] -= tadTrial->type;
+			hetTable[vi2] += tadTrial->type;
+			//std::cout <<"after "<<hetTable[vi1]<< std::endl;
 		}
 	}
+
+	//double tothet=0;
+	//for ( int v = 0; v < Ntot; ++v )
+	//	tothet+=hetTable[v];
+	//std::cout <<tothet << std::endl;
 }
 
 double MCHeteroPoly::GetEffectiveEnergy() const
 {
 	if ( Jpp > 0. )
 	{
-		if ( tadTrial->type == 1 )
-			return Jpp * (hetTable[tadUpdater->vo]-hetTable[tadUpdater->vn]);
+		if ( tadTrial->type != 0 )
+		{
+			//std::cout <<Jpp* (hetTable[tadUpdater->vo]-hetTable[tadUpdater->vn]) * tadTrial->type << std::endl;
+			return Jpp * (hetTable[tadUpdater->vo]-hetTable[tadUpdater->vn])* tadTrial->type;
+		}	
+			
 	}
 	
 	return 0.;
@@ -107,7 +119,7 @@ double MCHeteroPoly::GetCouplingEnergy(const int spinTable[Ntot]) const
 {
 	if ( Jlp > 0. )
 	{
-		if ( tadTrial->type == 1 )
+		if ( tadTrial->type != 0 ) 
 		{
 			double dE = 0.;
 		
@@ -120,36 +132,9 @@ double MCHeteroPoly::GetCouplingEnergy(const int spinTable[Ntot]) const
 				dE -= spinTable[vi2];
 			}
 		
-			return Jlp * dE;
+			return Jlp * dE * tadTrial->type;
 		}
 	}
 	
 	return 0.;
-}
-
-vtkSmartPointer<vtkPolyData> MCHeteroPoly::GetVTKData()
-{
-	vtkSmartPointer<vtkPolyData> polyData = MCPoly::GetVTKData();
-	
-	auto type = vtkSmartPointer<vtkIntArray>::New();
-
-	type->SetName("TAD type");
-	type->SetNumberOfComponents(1);
-	
-	for ( int t = 0; t < Ntad; ++t )
-		type->InsertNextValue(tadConf[t].type);
-		
-	polyData->GetPointData()->AddArray(type);
-
-	return polyData;
-}
-
-void MCHeteroPoly::SetVTKData(const vtkSmartPointer<vtkPolyData> polyData)
-{
-	MCPoly::SetVTKData(polyData);
-	
-	vtkDataArray* type = polyData->GetPointData()->GetArray("TAD type");
-
-	for ( int t = 0; t < Ntad; ++t )
-		tadConf[t].type = (int) type->GetComponent(t, 0);
 }

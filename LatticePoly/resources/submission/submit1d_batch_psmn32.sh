@@ -1,5 +1,3 @@
-#!/bin/bash
-
 ##
 ##  submit1d_batch_psmn32.sh
 ##  LatticePoly
@@ -7,6 +5,8 @@
 ##  Created by mtortora on 15/04/2021.
 ##  Copyright © 2021 ENS Lyon. All rights reserved.
 ##
+
+#!/bin/bash
 
 module load Python/3.6.1
 

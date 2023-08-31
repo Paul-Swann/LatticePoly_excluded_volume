@@ -1,5 +1,3 @@
-#!/bin/bash
-
 ##
 ##  submit_psmn.sh
 ##  LatticePoly
@@ -7,6 +5,8 @@
 ##  Created by mtortora on 29/09/2020.
 ##  Copyright © 2020 ENS Lyon. All rights reserved.
 ##
+
+#!/bin/bash
 
 # Max. walltime
 WTIME=168:00:00

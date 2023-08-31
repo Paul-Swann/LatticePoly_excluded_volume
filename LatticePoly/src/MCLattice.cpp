@@ -7,6 +7,12 @@
 //
 
 #include <fstream>
+#include <vtkLine.h>
+#include <vtkPointData.h>
+#include <vtkFloatArray.h>
+#include <vtkCubeSource.h>
+#include <vtkXMLPolyDataReader.h>
+#include <vtkXMLPolyDataWriter.h>
 
 #include "MCLattice.hpp"
 
@@ -67,6 +73,7 @@ void MCLattice::ReadInputArrays()
 				nnFile >> nbNN[v3][v1][v2];
 			
 			cosFile >> cTheta[v1][v2];
+			
 			cTheta[v1][v2] *= Kint;
 		}
 		
@@ -99,6 +106,14 @@ void MCLattice::Init(int)
 
 		bitTable[0][vi] = 0;
 		
+		if (Rconfinement > 0)
+		{
+			double c = (L-0.5)/2;
+			double d2 = SQR(xyzTable[0][vi]-c)+SQR(xyzTable[1][vi]-c)+SQR(xyzTable[2][vi]-c);
+			if ( d2 > SQR(Rconfinement) ) 
+				bitTable[0][vi] = -100;
+		}		
+
 		for ( int v = 0; v < 12; ++v )
 		{
 			double xp = x + nbXYZ[0][v+1];

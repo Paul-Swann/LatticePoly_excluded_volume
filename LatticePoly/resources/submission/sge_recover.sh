@@ -1,5 +1,3 @@
-#$ -S /bin/bash
-
 ##
 ##  sge_recover.sh
 ##  LatticePoly
@@ -7,6 +5,8 @@
 ##  Created by mtortora on 27/12/2019.
 ##  Copyright © 2019 ENS Lyon. All rights reserved.
 ##
+
+#$ -S /bin/bash
 
 ### Load the user environment for SGE
 #$ -cwd
@@ -37,6 +37,9 @@ OUTDIR=${PARAM1}_${VAL1}
 [ ! -z "${PARAM2}" ] && OUTDIR=${PARAM2}_${VAL2}_${OUTDIR}
 
 OUTDIR=${SCRATCHDIR}/${LOGNAME}/LatticeRecover/${OUTDIR}
+
+# Create output directory if necessary
+[ ! -d "${OUTDIR}" ] && mkdir -p ${OUTDIR}
 
 # Substitution strings
 DIRSUB="s|\(outputDir[[:space:]]*=[[:space:]]*\)\(.*;\)|\1${OUTDIR} ;|;"

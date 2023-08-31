@@ -19,16 +19,11 @@ public:
 	
 	void Init(int);	
 	void AcceptMove();
-    void BuildHetTable();
-
+	
 	double GetEffectiveEnergy() const;
 	double GetCouplingEnergy(const int[Ntot]) const;
 	
-	int hetTable[Ntot];
-	
-protected:
-	virtual vtkSmartPointer<vtkPolyData> GetVTKData();
-	virtual void SetVTKData(const vtkSmartPointer<vtkPolyData>);
+	double hetTable[Ntot];
 };
 
 

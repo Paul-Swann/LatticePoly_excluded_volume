@@ -9,6 +9,13 @@
 #include <iterator>
 #include <algorithm>
 
+#include <vtkLine.h>
+#include <vtkPointData.h>
+#include <vtkFloatArray.h>
+#include <vtkCubeSource.h>
+#include <vtkXMLPolyDataReader.h>
+#include <vtkXMLPolyDataWriter.h>
+
 #include "MCPoly.hpp"
 
 
@@ -24,15 +31,17 @@ MCPoly::~MCPoly()
 
 void MCPoly::Init(int Ninit)
 {
-	tadConf.reserve(2*Nchain);
-	tadTopo.reserve(2*Nchain);
+	tadConf.reserve(2*Ntot);
+	tadTopo.reserve(2*Ntot);
 	
-	std::fill(centerMass.begin(), centerMass.end(), (double3) {0., 0., 0.});
+	std::fill(centerMass.begin(), centerMass.end(), 0.);
 
 	if ( RestartFromFile )
 		FromVTK(Ninit);
+	else if (Rconfinement > 0)
+		GenerateRandom(Rconfinement/2);
 	else
-		GenerateHedgehog(L/2);
+		GenerateRandom(L/2);
 
 	for ( auto bond = tadTopo.begin(); bond != tadTopo.end(); ++bond )
 		SetBond(*bond);
@@ -55,13 +64,15 @@ void MCPoly::SetBond(MCBond& bond)
 	tad1->bonds[id1] = &bond;
 	tad2->bonds[id2] = &bond;
 	
-	if ( !bond.isSet || (tad1->links == 0) ) ++tad1->links;
-	if ( !bond.isSet || (tad2->links == 0) ) ++tad2->links;
+	if ( !bond.isSet || (tad1->links == 0) )
+		++tad1->links;
+	if ( !bond.isSet || (tad2->links == 0) )
+		++tad2->links;
 	
 	bond.isSet = true;
 }
 
-void MCPoly::GenerateHedgehog(int lim)
+void MCPoly::GenerateRandom(int lim)
 {
 	Ntad = Nchain;
 	Nbond = Nchain-1;
@@ -160,6 +171,17 @@ void MCPoly::GenerateHedgehog(int lim)
 			++ni;
 		}
 	}
+	if (Rconfinement > 0)
+	{
+		double c = (L-0.5)/2;
+
+		for ( int t = 0; t < Ntad; ++t )
+		{
+			double d2 = SQR(lat->xyzTable[0][tadConf[t].pos]-c)+SQR(lat->xyzTable[1][tadConf[t].pos]-c)+SQR(lat->xyzTable[2][tadConf[t].pos]-c);
+
+			if ( d2 > SQR(Rconfinement) ) throw std::runtime_error("Confinement is screwed up");
+		}
+	}	
 }
 
 void MCPoly::TrialMove(double* dE)
@@ -186,9 +208,72 @@ void MCPoly::ToVTK(int frame)
 	
 	std::string path = outputDir + "/" + fileName;
 	
-	vtkSmartPointer<vtkPolyData> polyData = GetVTKData();
+	auto points = vtkSmartPointer<vtkPoints>::New();
+	auto lines = vtkSmartPointer<vtkCellArray>::New();
 	
+	auto types = vtkSmartPointer<vtkFloatArray>::New();
+	auto forks = vtkSmartPointer<vtkIntArray>::New();
+	auto status = vtkSmartPointer<vtkIntArray>::New();
+	auto painters = vtkSmartPointer<vtkFloatArray>::New();
+	auto sisterIDs = vtkSmartPointer<vtkIntArray>::New();
+
+	types->SetName("TAD type");
+	types->SetNumberOfComponents(1);
+	
+	forks->SetName("Fork type");
+	forks->SetNumberOfComponents(1);
+	
+	status->SetName("Replication status");
+	status->SetNumberOfComponents(1);
+
+	painters->SetName("Painter status");
+	painters->SetNumberOfComponents(1);
+	
+	sisterIDs->SetName("Sister ID");
+	sisterIDs->SetNumberOfComponents(1);
+	
+	std::vector<double3> conf = GetPBCConf();
+
+	for ( int t = 0; t < Ntad; ++t )
+	{
+		double type = tadConf[t].type;
+		int state = tadConf[t].status;
+		int id = tadConf[t].sisterID;
+		
+		double painter = tadConf[t].painter;
+		
+		int fork = tadConf[t].isFork() ? (tadConf[t].isLeftFork() ? -1 : 1) : 0;
+		
+		points->InsertNextPoint(conf[t][0], conf[t][1], conf[t][2]);
+		
+		types->InsertNextValue(type);
+		forks->InsertNextValue(fork);
+		status->InsertNextValue(state);
+		painters->InsertNextValue(painter);
+		sisterIDs->InsertNextValue(id);
+	}
+	
+	for ( auto bond = tadTopo.begin(); bond != tadTopo.end(); ++bond )
+	{
+		auto line = vtkSmartPointer<vtkLine>::New();
+		
+		line->GetPointIds()->SetId(0, bond->id1);
+		line->GetPointIds()->SetId(1, bond->id2);
+	
+		lines->InsertNextCell(line);
+	}
+	
+	auto polyData = vtkSmartPointer<vtkPolyData>::New();
 	auto writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+
+	polyData->SetPoints(points);
+	polyData->SetLines(lines);
+	
+	polyData->GetPointData()->AddArray(types);
+	polyData->GetPointData()->AddArray(forks);
+	polyData->GetPointData()->AddArray(status);
+	polyData->GetPointData()->AddArray(painters);
+	polyData->GetPointData()->AddArray(sisterIDs);
 
 	writer->SetFileName(path.c_str());
 	writer->SetInputData(polyData);
@@ -202,6 +287,7 @@ void MCPoly::FromVTK(int frame)
 	sprintf(fileName, "poly%05d.vtp", frame);
 	
 	std::string path = outputDir + "/" + fileName;
+
 	std::cout << "Starting from polymer configuration file " << path << std::endl;
 
 	auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
@@ -210,68 +296,33 @@ void MCPoly::FromVTK(int frame)
 	reader->Update();
 	
 	vtkPolyData* polyData = reader->GetOutput();
+	vtkCellArray* lineData = polyData->GetLines();
 	
-	SetVTKData(polyData);
+	vtkDataArray* typeData = polyData->GetPointData()->GetArray("TAD type");
+	vtkDataArray* statusData = polyData->GetPointData()->GetArray("Replication status");
+	vtkDataArray* sisterData = polyData->GetPointData()->GetArray("Sister ID");
+	vtkDataArray* painterData = polyData->GetPointData()->GetArray("Painter status");
 	
-	auto lastBond = std::find_if(tadTopo.begin(), tadTopo.end(), [](const MCBond& b){return b.id2 != b.id1+1;});
-	int length = (int) std::distance(tadTopo.begin(), lastBond) + 1;
-	
-	if ( length != Nchain )
-		throw std::runtime_error("MCPoly: Found incompatible main chain dimension " + std::to_string(length));
-}
-
-vtkSmartPointer<vtkPolyData> MCPoly::GetVTKData()
-{
-	auto points = vtkSmartPointer<vtkPoints>::New();
-	auto lines = vtkSmartPointer<vtkCellArray>::New();
-	
-	std::vector<double3> conf = BuildUnfoldedConf();
-	
-	for ( int t = 0; t < Ntad; ++t )
-		points->InsertNextPoint(conf[t][0], conf[t][1], conf[t][2]);
-	
-	for ( auto bond = tadTopo.begin(); bond != tadTopo.end(); ++bond )
-	{
-		auto line = vtkSmartPointer<vtkLine>::New();
-		
-		line->GetPointIds()->SetId(0, bond->id1);
-		line->GetPointIds()->SetId(1, bond->id2);
-		
-		lines->InsertNextCell(line);
-	}
-	
-	auto polyData = vtkSmartPointer<vtkPolyData>::New();
-
-	polyData->SetPoints(points);
-	polyData->SetLines(lines);
-	
-	return polyData;
-}
-
-void MCPoly::SetVTKData(const vtkSmartPointer<vtkPolyData> polyData)
-{
-	Ntad = (int) polyData->GetNumberOfPoints();
+    Ntad = (int) polyData->GetNumberOfPoints();
 	Nbond = (int) polyData->GetNumberOfLines();
 	
 	tadConf.resize(Ntad);
 	tadTopo.resize(Nbond);
-	
-	vtkCellArray* lineData = polyData->GetLines();
-
+			
 	for ( int t = 0; t < Ntad; ++t )
 	{
 		double point[3];
 		
 		polyData->GetPoint(t, point);
 		
-		int chainNum = Ntad / Nchain;
-
-		int chainId = (chainNum == 1) ? 0 : t / Nchain;
-		int chainLength = (chainNum == 1) ? Ntad : Nchain;
+		tadConf[t].type = (double) typeData->GetComponent(t, 0);
+		tadConf[t].status = (int) statusData->GetComponent(t, 0);
+		tadConf[t].sisterID = (int) sisterData->GetComponent(t, 0);
+		tadConf[t].painter = (double) painterData->GetComponent(t, 0);
 
 		for ( int i = 0; i < 3; ++i )
 		{
-			centerMass[chainId][i] += point[i] / ((double) chainLength);
+			centerMass[i] += point[i] / ((double) Ntad);
 
 			while ( point[i] >= L ) point[i] -= L;
 			while ( point[i] < 0 )  point[i] += L;
@@ -280,9 +331,9 @@ void MCPoly::SetVTKData(const vtkSmartPointer<vtkPolyData> polyData)
 		int ixp = (int) 1*point[0];
 		int iyp = (int) 2*point[1];
 		int izp = (int) 4*point[2];
-			
+		
 		tadConf[t].pos = ixp + iyp*L + izp*L2;
-			
+		
 		++lat->bitTable[0][tadConf[t].pos];
 	}
 	
@@ -313,90 +364,34 @@ void MCPoly::SetVTKData(const vtkSmartPointer<vtkPolyData> polyData)
 			}
 		}
 	}
+	
+	auto lastBond = std::find_if(tadTopo.begin(), tadTopo.end(), [](const MCBond& b){return b.id2 != b.id1+1;});
+	int length = (int) std::distance(tadTopo.begin(), lastBond) + 1;
+	
+	if ( length != Nchain )
+		throw std::runtime_error("MCPoly: Found incompatible main chain dimension " + std::to_string(length));
 }
 
-std::vector<double3> MCPoly::BuildUnfoldedConf()
+std::vector<double3> MCPoly::GetPBCConf()
 {
-	std::vector<MCTad*> leftEnds;
-	std::vector<MCTad*> builtTads;
-	
 	std::vector<double3> conf(Ntad);
-	
-	builtTads.reserve(Ntad);
-	
+
 	for ( int t = 0; t < Ntad; ++t )
 	{
 		for ( int i = 0; i < 3; ++i )
 			conf[t][i] = lat->xyzTable[i][tadConf[t].pos];
-		
-		if ( tadConf[t].isLeftEnd() )
-			leftEnds.push_back(&tadConf[t]);
 	}
 	
-	// Grow chains recursively, starting from their respective left extremities
-	auto leftEnd = leftEnds.begin();
+	for ( auto bond = tadTopo.begin(); bond != tadTopo.end(); ++bond )
+		FixPBCPair(conf, bond->id1, bond->id2);
 	
-	while ( (int) builtTads.size() < Ntad )
-	{
-		MCTad *tad1, *tad2;
-		tad1 = *leftEnd;
-		
-		bool builtTad1 = (std::find(builtTads.begin(), builtTads.end(), tad1) != builtTads.end());
-
-		if ( !builtTad1 )
-		{
-			builtTads.push_back(tad1);
-
-			// Traverse main branch
-			while ( (tad2 = tad1->neighbors[1]) )
-			{
-				bool builtTad2 = (std::find(builtTads.begin(), builtTads.end(), tad2) != builtTads.end());
-
-				if ( !builtTad2 )
-				{
-					builtTads.push_back(tad2);
-					FixPBCPair(conf, tad1, tad2);
-
-					// Traverse side branches
-					if ( tad2->isFork() )
-					{
-						MCTad *tad3, *tad4;
-						tad3 = tad2->neighbors[2];
-						
-						builtTads.push_back(tad3);
-						FixPBCPair(conf, tad2, tad3);
-
-						while ( (tad4 = (tad2->isLeftFork() ? tad3->neighbors[1] : tad3->neighbors[0])) )
-						{
-							builtTads.push_back(tad4);
-							FixPBCPair(conf, tad3, tad4);
-
-							if ( tad4->isFork() )
-								break;
-							
-							tad3 = tad4;
-						}
-					}
-				}
-				
-				tad1 = tad2;
-			}
-		}
-		
-		++leftEnd;
-	}
-	
-	// Translate chain center(s) of mass back into the appropriate box
-	FixPBCCenterMass(conf);
+	SetPBCCenterMass(conf.begin(), conf.end(), &centerMass);
 	
 	return conf;
 }
 
-void MCPoly::FixPBCPair(std::vector<double3>& conf, MCTad* tad1, MCTad* tad2)
+void MCPoly::FixPBCPair(std::vector<double3>& conf, int id1, int id2)
 {
-	int id1 = (int) std::distance(tadConf.data(), tad1);
-	int id2 = (int) std::distance(tadConf.data(), tad2);
-	
 	double3* pos1 = &conf[id1];
 	double3* pos2 = &conf[id2];
 
@@ -414,44 +409,35 @@ void MCPoly::FixPBCPair(std::vector<double3>& conf, MCTad* tad1, MCTad* tad2)
 	}
 }
 
-void MCPoly::FixPBCCenterMass(std::vector<double3>& conf)
+void MCPoly::SetPBCCenterMass(std::vector<double3>::iterator end1, std::vector<double3>::iterator end2, double3* oldCenter)
 {
-	int chainNum = Ntad / Nchain;
-	int chainLength = (chainNum == 1) ? Ntad : Nchain;
+	double3 newCenter = {0., 0., 0.};
 	
-	for ( int chainId = 0; chainId < chainNum; ++chainId )
+	bool isSetOldCenter = std::any_of(oldCenter->begin(), oldCenter->end(), [](double x){return x != 0.;});
+	bool isSetCenterMass = std::any_of(centerMass.begin(), centerMass.end(), [](double x){return x != 0.;});
+
+	for ( int i = 0; i < 3; ++i )
 	{
-		double3 newCenter = {0., 0., 0.};
-		double3* oldCenter = centerMass.begin() + chainId;
-		
-		auto end1 = conf.begin() + chainId*chainLength;
-		auto end2 = conf.begin() + (chainId+1)*chainLength;
-		
-		bool isSetOldCenter = std::any_of(oldCenter->begin(), oldCenter->end(), [](double x){return x != 0.;});
+		for ( auto tadPos = end1; tadPos != end2; ++tadPos )
+			newCenter[i] += (*tadPos)[i] / ((double) std::distance(end1, end2));
 
-		for ( int i = 0; i < 3; ++i )
+		if ( isSetOldCenter || isSetCenterMass )
 		{
-			for ( auto tadPos = end1; tadPos != end2; ++tadPos )
-				newCenter[i] += (*tadPos)[i] / ((double) chainLength);
-
-			// Translate chain center of mass into the same box as the previous conformation, if it exists
-			if ( isSetOldCenter )
+			double deltacenterMass = isSetOldCenter ? newCenter[i] - (*oldCenter)[i] : newCenter[i] - centerMass[i];
+		
+			// Translate chain center of mass into the same box as the previous conformation
+			while ( std::abs(deltacenterMass) > L/2. )
 			{
-				double deltacenterMass = newCenter[i] - (*oldCenter)[i];
+				double pbcShift = std::copysign(L, deltacenterMass);
 			
-				while ( std::abs(deltacenterMass) > L/2. )
-				{
-					double pbcShift = std::copysign(L, deltacenterMass);
-				
-					for ( auto tadPos = end1; tadPos != end2; ++tadPos )
-						(*tadPos)[i] -= pbcShift;
-				
-					deltacenterMass -= pbcShift;
-					newCenter[i] -= pbcShift;
-				}
+				for ( auto tadPos = end1; tadPos != end2; ++tadPos )
+					(*tadPos)[i] -= pbcShift;
+			
+				deltacenterMass -= pbcShift;
+				newCenter[i] -= pbcShift;
 			}
 		}
-		
-		*oldCenter = newCenter;
 	}
+	
+	*oldCenter = newCenter;
 }

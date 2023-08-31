@@ -1,5 +1,3 @@
-#$ -S /bin/bash
-
 ##
 ##  sge.sh
 ##  LatticePoly
@@ -7,6 +5,8 @@
 ##  Created by mtortora on 29/09/2020.
 ##  Copyright © 2020 ENS Lyon. All rights reserved.
 ##
+
+#$ -S /bin/bash
 
 ### Load the user environment for SGE
 #$ -cwd

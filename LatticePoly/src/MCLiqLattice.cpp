@@ -6,6 +6,13 @@
 //  Copyright © 2019 ENS Lyon. All rights reserved.
 //
 
+#include <vtkLine.h>
+#include <vtkPointData.h>
+#include <vtkFloatArray.h>
+#include <vtkCubeSource.h>
+#include <vtkXMLPolyDataReader.h>
+#include <vtkXMLPolyDataWriter.h>
+
 #include "MCLiqLattice.hpp"
 
 
@@ -218,7 +225,7 @@ double MCLiqLattice::GetSpinEnergy() const
 	return 0.;
 }
 
-double MCLiqLattice::GetCouplingEnergy(const int hetTable[Ntot]) const
+double MCLiqLattice::GetCouplingEnergy(const double hetTable[Ntot]) const
 {
 	if ( Jlp > 0. )
 	{
@@ -228,6 +235,28 @@ double MCLiqLattice::GetCouplingEnergy(const int hetTable[Ntot]) const
 	
 	return 0.;
 }
+
+double MCLiqLattice::GetCouplingEnergyPainter(const double hetTable[Ntot], const double painterTable[Ntot] ) const
+{
+
+	double dE = MCLiqLattice::GetCouplingEnergy( hetTable );
+	
+
+	if ( ( Jlpp > 0. ) )
+	{
+		if ( spinTable[v2] == 0 )
+			dE += Jlpp * (painterTable[v1]-painterTable[v2]);
+	}	
+    
+	if ( ( EV > 0. ) )
+	{
+	        if ( spinTable[v2] == 0)
+		       dE += EV * (bitTable[0][v2]-bitTable[0][v1]);
+	}	
+
+	return dE;
+}
+
 
 void MCLiqLattice::ToVTK(int frame)
 {
@@ -288,8 +317,7 @@ void MCLiqLattice::FromVTK(int frame)
 	sprintf(fileName, "liq%05d.vtp", frame);
 	
 	std::string path = outputDir + "/" + fileName;
-	std::cout << "Starting from liquid configuration file " << path << std::endl;
-
+	
 	auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
 
 	reader->SetFileName(path.c_str());
@@ -304,13 +332,15 @@ void MCLiqLattice::FromVTK(int frame)
 	spinDisp.reserve(nLiq);
 
 	if ( (InitDrop == 0) && (nLiq != std::floor(Ntot*Ldens)) )
-		throw std::runtime_error("MCLiqLattice: Found configuration file with incompatible protein number " + std::to_string(nLiq));
-		
+		throw std::runtime_error("MCLiqLattice: Found liquid configuration file with incompatible dimension " + std::to_string(nLiq));
+	
+	std::cout << "Starting from liquid configuration file " << path << std::endl;
+	
 	for ( int i = 0; i < nLiq; ++i )
 	{
-		double point[3];
 		double3 initDisp;
-
+		double point[3];
+		
 		polyData->GetPoint(i, point);
 		
 		for ( int j = 0; j < 3; ++j )

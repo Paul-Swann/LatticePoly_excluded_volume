@@ -25,24 +25,34 @@ int NliqMC;
 int Ndrop;
 
 bool InitDrop;
-
 bool RestartFromFile;
 
 double Kint;
 
 double R;
 double Ldens;
+double Rconfinement;
 
 double Jll;
 double Jlp;
+double Jlpp;
 double Jpp;
+double Jppp;
+double Jns;
+double Jpppp;
+double EV;
 
 double inactiveRatio;
-double mutationRatio;
-
 double propRate;
 
 int propagationMode;
+
+double painterAct;
+double cisSpread;
+double transSpread;
+double readerWriter;
+double boost;
+double nucleoTurn;
 
 double originRate;
 double replicRate;
@@ -52,7 +62,7 @@ std::string polyType;
 
 std::string outputDir;
 std::string domainPath;
-std::string colorPath;
+std::string painterPath;
 
 
 InputParser::InputParser(const std::string& _filePath): filePath(_filePath)
@@ -72,24 +82,34 @@ void InputParser::ParseVars()
 	Ndrop           = GetValueOfKey<int>("Ndrop");
 	
 	InitDrop        = GetValueOfKey<bool>("InitDrop");
-	
 	RestartFromFile = GetValueOfKey<bool>("RestartFromFile");
 
 	Kint            = GetValueOfKey<double>("Kint");
 	
 	R               = GetValueOfKey<double>("R");
 	Ldens           = GetValueOfKey<double>("Ldens");
-	
+	Rconfinement    = GetValueOfKey<double>("Rconfinement");
+
 	Jll             = GetValueOfKey<double>("Jll");
 	Jlp             = GetValueOfKey<double>("Jlp");
+    Jlpp            = GetValueOfKey<double>("Jlpp");
 	Jpp             = GetValueOfKey<double>("Jpp");
-	
+    Jns             = GetValueOfKey<double>("Jns");
+    Jppp            = GetValueOfKey<double>("Jppp");
+	Jpppp           = GetValueOfKey<double>("Jpppp");
+	EV              = GetValueOfKey<double>("EV");
+
 	inactiveRatio   = GetValueOfKey<double>("inactiveRatio");
-	mutationRatio   = GetValueOfKey<double>("mutationRatio");
-	
 	propRate        = GetValueOfKey<double>("propRate");
 
 	propagationMode = GetValueOfKey<int>("propagationMode");
+
+	painterAct      = GetValueOfKey<double>("painterAct");
+	cisSpread       = GetValueOfKey<double>("cisSpread");
+	transSpread     = GetValueOfKey<double>("transSpread");
+	readerWriter    = GetValueOfKey<double>("readerWriter");
+	boost           = GetValueOfKey<double>("boost");
+	nucleoTurn      = GetValueOfKey<double>("nucleoTurn");
 
 	originRate      = GetValueOfKey<double>("originRate");
 	replicRate      = GetValueOfKey<double>("replicRate");
@@ -99,7 +119,7 @@ void InputParser::ParseVars()
 	
 	outputDir       = GetValueOfKey<std::string>("outputDir");
 	domainPath      = GetValueOfKey<std::string>("domainPath");
-	colorPath       = GetValueOfKey<std::string>("colorPath");
+	painterPath     = GetValueOfKey<std::string>("painterPath");
 }
 
 void InputParser::ExtractKeys()
@@ -216,7 +236,7 @@ template <typename ValueType>
 ValueType InputParser::GetValueOfKey(const std::string& key) const
 {
 	if ( !KeyExists(key) )
-		throw std::runtime_error("InputParser: No entry found for input parameter " + key + " in file " + filePath);
+		throw std::runtime_error("No entry found for input parameter " + key + " in file " + filePath);
 	
 	return Converter::string_to_T<ValueType>(contents.find(key)->second);
 }

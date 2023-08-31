@@ -33,17 +33,17 @@ class vtkReader():
 			raise IOError("Directory '%s' does not exist" % self.outputDir)
 		
 		self.liqPos = None
+		self.polyPos = None
+
 		self.liqDisp = None
 		self.liqDens = None
 		
-		self.polyPos = None
 		self.polyType = None
-		self.polyDomains = None
+		self.polyPainter = None
 		
 		self.boxDim = None
 		
 		self.N = 0
-		
 		self.frame = self.initFrame = initFrame
 		self.nLiq = self.nTad = self.nEuc = self.nHet = 0
 		
@@ -120,19 +120,16 @@ class vtkReader():
 		
 		self.polyPos = vn.vtk_to_numpy(polyData.GetPoints().GetData())
 		
-		try:
-			self.polyType = vn.vtk_to_numpy(polyData.GetPointData().GetArray("TAD type"))
+		self.polyType = vn.vtk_to_numpy(polyData.GetPointData().GetArray("TAD type"))
+		self.polyPainter = vn.vtk_to_numpy(polyData.GetPointData().GetArray("Painter status"))
+
+		self.nEuc = np.count_nonzero(self.polyType == 0)
+		self.nHet = np.count_nonzero(self.polyType == 1)
 		
-			self.nEuc = np.count_nonzero(self.polyType == 0)
-			self.nHet = np.count_nonzero(self.polyType == 1)
+		hetDomains = np.nonzero(self.polyType == 1)[0]
+		self.domains = np.split(hetDomains, np.where(np.diff(hetDomains) != 1)[0] + 1)
 		
-			hetDomains = np.nonzero(self.polyType == 1)[0]
-			self.polyDomains = np.split(hetDomains, np.where(np.diff(hetDomains) != 1)[0] + 1)
-		
-			self.nDom = len(self.polyDomains)
-			
-		except AttributeError:
-			pass
+		self.nDom = len(self.domains)
 		
 		if self._backInBox:
 			self._fixPBCs(self.boxDim, self.polyPos)

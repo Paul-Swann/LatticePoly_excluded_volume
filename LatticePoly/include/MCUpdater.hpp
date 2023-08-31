@@ -27,6 +27,7 @@ inline bool MetropolisMove(lattice* lat, double dE)
 
 
 /* struct containers are required to circumvent function template partial specialization */
+
 // UpdateTAD template specialisations
 template<class lattice, class polymer>
 struct UpdateTADImpl
@@ -50,6 +51,7 @@ struct UpdateTADImpl
 		}
 	}
 };
+
 
 template<class polymer>
 struct UpdateTADImpl<MCLattice, polymer>
@@ -89,7 +91,12 @@ struct UpdateTADImpl<MCLattice, MCPoly>
 		
 			if ( acceptMove )
 			{
-				pol->AcceptMove();
+				if( polyType == "MCLivingPoly")
+					static_cast<MCLivingPoly*>(pol)->AcceptMove();
+				else if ( polyType == "MCHeteroPoly")
+					static_cast<MCHeteroPoly*>(pol)->AcceptMove();	
+				else	
+					pol->AcceptMove();
 				++(*acceptCount);
 			}
 		}
@@ -123,6 +130,28 @@ struct UpdateSpinImpl<MCLattice, polymer>
 {
 	static inline void _(MCLattice*, polymer*, unsigned long long*) {}
 };
+
+template<>
+struct UpdateSpinImpl<MCLiqLattice, MCLivingPoly>
+{
+	static inline void _(MCLiqLattice* lat, MCLivingPoly* pol, unsigned long long* acceptCount)
+	{
+		double dE;
+			
+		lat->TrialMove(&dE);
+		
+		double dEcpl = lat->GetCouplingEnergyPainter(pol->hetTable,pol->painterTable); //PainterTable
+		bool acceptMove = MetropolisMove(lat, dE+dEcpl);
+
+		if ( acceptMove )
+		{
+			lat->AcceptMove();
+			++(*acceptCount);
+		}
+	}
+};
+
+
 
 
 // Wrapper functions

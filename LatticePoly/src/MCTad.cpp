@@ -23,9 +23,11 @@ MCTad::MCTad(): bonds(), neighbors()
 	pos = -1;
 	sisterID = -1;
 	
-	type = 0;
+	type = 0.;
 	links = 0;
 	status = 0;
+
+    painter = 0.;
 }
 
 MCTad& MCTad::operator= (MCTad& tad)

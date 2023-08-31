@@ -19,13 +19,15 @@ public:
 	
 	void Init(int);	
 	void TrialMove(double*);
-	
-	void ToVTK(int);
-	
-private:
-	void UpdateFromFile(int);
-	
-	std::vector<std::vector<int> > colorData;
+    void PropagationMove();
+    void LiqPropagationMove();
+    void AcceptMove();
+
+	double GetEffectiveEnergy() const;
+    double GetCouplingEnergy(const int[Ntot]) const;
+
+    double painterTable[Ntot];
+    double boostTable[Ntot];
 };
 
 
